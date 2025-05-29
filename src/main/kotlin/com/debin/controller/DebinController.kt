@@ -1,8 +1,8 @@
 package com.debin.controller
 
 import com.debin.dto.ApiResponse
+import com.debin.dto.EmailTransactionRequest
 import com.debin.dto.ReceiveMoneyRequest
-import com.debin.dto.RequestMoneyRequest
 import com.debin.dto.TransferResponse
 import com.debin.service.DebinService
 import jakarta.validation.Valid
@@ -17,35 +17,35 @@ import org.springframework.web.bind.annotation.*
 class DebinController(
     private val debinService: DebinService
 ) {
-    
+
     private val logger = LoggerFactory.getLogger(DebinController::class.java)
-    
+
     @PostMapping("/receive")
     fun receiveMoney(@Valid @RequestBody request: ReceiveMoneyRequest): ResponseEntity<ApiResponse<TransferResponse>> {
         logger.info("Received money reception request for account: ${request.accountIdentifier}")
-        
+
         val response = debinService.receiveMoney(request)
-        
+
         return if (response.success) {
             ResponseEntity.ok(response)
         } else {
             ResponseEntity.badRequest().body(response)
         }
     }
-    
+
     @PostMapping("/request")
-    fun requestMoney(@Valid @RequestBody request: RequestMoneyRequest): ResponseEntity<ApiResponse<Any>> {
-        logger.info("Received money request for account: ${request.accountIdentifier}")
-        
+    fun requestMoney(@Valid @RequestBody request: EmailTransactionRequest): ResponseEntity<ApiResponse<Any>> {
+        logger.info("Received money request for account: ${request.email}")
+
         val response = debinService.requestMoney(request)
-        
+
         return if (response.success) {
             ResponseEntity.ok(response)
         } else {
             ResponseEntity.badRequest().body(response)
         }
     }
-    
+
     @GetMapping("/health")
     fun health(): ResponseEntity<Map<String, String>> {
         return ResponseEntity.ok(mapOf(

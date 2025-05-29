@@ -89,12 +89,10 @@ class DebinControllerTest {
     @Test
     fun `test requestMoney success`() {
         // Given
-        val request = RequestMoneyRequest(
-            accountIdentifier = "123456789",
+        val request = EmailTransactionRequest(
+            email = "test@example.com",
             amount = BigDecimal("100.00"),
-            description = "Test money request",
-            requesterName = "John Doe",
-            requesterAccount = "987654321"
+            description = "Test money request"
         )
 
         val apiResponse = ApiResponse<Any>(
@@ -144,7 +142,7 @@ class DebinControllerTest {
         // Given - invalid request with missing required fields
         val invalidRequest = mapOf(
             "amount" to 100.00
-            // Missing accountIdentifier and description
+            // Missing email and description
         )
 
         // When & Then
@@ -155,4 +153,61 @@ class DebinControllerTest {
         )
             .andExpect(status().isBadRequest)
     }
+
+    /* Commented out deposit tests as they're not part of the current implementation
+    @Test
+    fun `test deposit success`() {
+        // Given
+        val request = DepositRequest(
+            fromEmail = "sender@example.com",
+            toEmail = "receiver@example.com",
+            amount = BigDecimal("75.25"),
+            description = "Test deposit"
+        )
+
+        val apiResponse = ApiResponse<Any>(
+            success = true,
+            message = "Deposit processed successfully",
+            data = mapOf(
+                "id" to "wallet123",
+                "balance" to 175.25,
+                "currency" to "USD"
+            ),
+            timestamp = LocalDateTime.now(),
+            transactionId = "DEB-123456"
+        )
+
+        `when`(debinService.deposit(request)).thenReturn(apiResponse)
+
+        // When & Then
+        mockMvc.perform(
+            post("/api/deposit")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.message").value("Deposit processed successfully"))
+            .andExpect(jsonPath("$.data.id").value("wallet123"))
+            .andExpect(jsonPath("$.data.balance").value(175.25))
+            .andExpect(jsonPath("$.data.currency").value("USD"))
+    }
+
+    @Test
+    fun `test deposit validation error`() {
+        // Given - invalid request with missing required fields
+        val invalidRequest = mapOf(
+            "amount" to 75.25
+            // Missing fromEmail and toEmail
+        )
+
+        // When & Then
+        mockMvc.perform(
+            post("/api/deposit")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(invalidRequest))
+        )
+            .andExpect(status().isBadRequest)
+    }
+    */
 }

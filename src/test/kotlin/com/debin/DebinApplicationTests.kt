@@ -1,8 +1,8 @@
 package com.debin
 
 import com.debin.config.TestConfig
+import com.debin.dto.EmailTransactionRequest
 import com.debin.dto.ReceiveMoneyRequest
-import com.debin.dto.RequestMoneyRequest
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -79,12 +79,10 @@ class DebinApplicationTests {
     @Test
     fun `test request money flow`() {
         // Create a request money request
-        val requestMoneyRequest = RequestMoneyRequest(
-            accountIdentifier = "123456789",
+        val requestMoneyRequest = EmailTransactionRequest(
+            email = "test@example.com",
             amount = BigDecimal("100.00"),
-            description = "Integration test for money request",
-            requesterName = "Integration Test",
-            requesterAccount = "987654321"
+            description = "Integration test for money request"
         )
 
         // This test might fail if the external API is not available or configured
