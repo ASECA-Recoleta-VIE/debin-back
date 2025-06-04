@@ -44,170 +44,87 @@ class DebinControllerTest {
     }
 
     @Test
-    fun `test receiveMoney success`() {
+    fun `test checkFundAvailability success`() {
         // Given
-        val request = ReceiveMoneyRequest(
-            accountIdentifier = "123456789",
+        val request = FundAvailabilityRequest(
             amount = BigDecimal("100.00"),
-            description = "Test money reception",
-            senderName = "John Doe",
-            senderAccount = "987654321"
+            accountId = "test-account",
+            description = "Test fund check"
+        )
+
+        val fundAvailabilityResponse = FundAvailabilityResponse(
+            available = true,
+            amount = request.amount,
+            accountId = request.accountId!!,
+            currentBalance = BigDecimal("500.00")
+        )
+
+        val apiResponse = ApiResponse(
+            success = true,
+            message = "Funds are available",
+            data = fundAvailabilityResponse,
+            timestamp = LocalDateTime.now(),
+            transactionId = "DEB-123456"
+        )
+
+        `when`(debinService.checkFundAvailability(request)).thenReturn(apiResponse)
+
+        // When & Then
+        mockMvc.perform(
+            post("/api/check-funds")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.message").value("Funds are available"))
+            .andExpect(jsonPath("$.data.available").value(true))
+            .andExpect(jsonPath("$.data.amount").value(100.00))
+            .andExpect(jsonPath("$.data.accountId").value("test-account"))
+            .andExpect(jsonPath("$.data.currentBalance").value(500.00))
+    }
+
+    // Test for removeFunds removed since this method doesn't exist in the current implementation
+
+    @Test
+    fun `test withdrawFromMainApi success`() {
+        // Given
+        val request = WithdrawRequest(
+            email = "test@example.com",
+            amount = BigDecimal("100.00"),
+            description = "Test withdrawal",
+            password = "password123"
         )
 
         val transferResponse = TransferResponse(
             transactionId = "DEB-123456",
             amount = request.amount,
             status = "COMPLETED",
-            accountIdentifier = request.accountIdentifier
+            accountIdentifier = "test-account"
         )
 
         val apiResponse = ApiResponse(
             success = true,
-            message = "Money received successfully",
+            message = "Funds withdrawn from main API and deposited to fake API successfully",
             data = transferResponse,
             timestamp = LocalDateTime.now(),
             transactionId = "DEB-123456"
         )
 
-        `when`(debinService.receiveMoney(request)).thenReturn(apiResponse)
+        `when`(debinService.withdrawFromMainApi(request)).thenReturn(apiResponse)
 
         // When & Then
         mockMvc.perform(
-            post("/api/receive")
+            post("/api/withdraw-from-main")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.message").value("Money received successfully"))
+            .andExpect(jsonPath("$.message").value("Funds withdrawn from main API and deposited to fake API successfully"))
             .andExpect(jsonPath("$.data.transactionId").value("DEB-123456"))
             .andExpect(jsonPath("$.data.amount").value(100.00))
             .andExpect(jsonPath("$.data.status").value("COMPLETED"))
-            .andExpect(jsonPath("$.data.accountIdentifier").value("123456789"))
+            .andExpect(jsonPath("$.data.accountIdentifier").value("test-account"))
     }
-
-    @Test
-    fun `test requestMoney success`() {
-        // Given
-        val request = EmailTransactionRequest(
-            email = "test@example.com",
-            amount = BigDecimal("100.00"),
-            description = "Test money request"
-        )
-
-        val apiResponse = ApiResponse<Any>(
-            success = true,
-            message = "Money request processed successfully",
-            data = mapOf(
-                "status" to "PENDING",
-                "transactionId" to "TEST-123456"
-            ),
-            timestamp = LocalDateTime.now()
-        )
-
-        `when`(debinService.requestMoney(request)).thenReturn(apiResponse)
-
-        // When & Then
-        mockMvc.perform(
-            post("/api/request")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request))
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.message").value("Money request processed successfully"))
-            .andExpect(jsonPath("$.data.status").value("PENDING"))
-            .andExpect(jsonPath("$.data.transactionId").value("TEST-123456"))
-    }
-
-    @Test
-    fun `test receiveMoney validation error`() {
-        // Given - invalid request with missing required fields
-        val invalidRequest = mapOf(
-            "amount" to 100.00
-            // Missing accountIdentifier and description
-        )
-
-        // When & Then
-        mockMvc.perform(
-            post("/api/receive")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(invalidRequest))
-        )
-            .andExpect(status().isBadRequest)
-    }
-
-    @Test
-    fun `test requestMoney validation error`() {
-        // Given - invalid request with missing required fields
-        val invalidRequest = mapOf(
-            "amount" to 100.00
-            // Missing email and description
-        )
-
-        // When & Then
-        mockMvc.perform(
-            post("/api/request")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(invalidRequest))
-        )
-            .andExpect(status().isBadRequest)
-    }
-
-    /* Commented out deposit tests as they're not part of the current implementation
-    @Test
-    fun `test deposit success`() {
-        // Given
-        val request = DepositRequest(
-            fromEmail = "sender@example.com",
-            toEmail = "receiver@example.com",
-            amount = BigDecimal("75.25"),
-            description = "Test deposit"
-        )
-
-        val apiResponse = ApiResponse<Any>(
-            success = true,
-            message = "Deposit processed successfully",
-            data = mapOf(
-                "id" to "wallet123",
-                "balance" to 175.25,
-                "currency" to "USD"
-            ),
-            timestamp = LocalDateTime.now(),
-            transactionId = "DEB-123456"
-        )
-
-        `when`(debinService.deposit(request)).thenReturn(apiResponse)
-
-        // When & Then
-        mockMvc.perform(
-            post("/api/deposit")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request))
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.message").value("Deposit processed successfully"))
-            .andExpect(jsonPath("$.data.id").value("wallet123"))
-            .andExpect(jsonPath("$.data.balance").value(175.25))
-            .andExpect(jsonPath("$.data.currency").value("USD"))
-    }
-
-    @Test
-    fun `test deposit validation error`() {
-        // Given - invalid request with missing required fields
-        val invalidRequest = mapOf(
-            "amount" to 75.25
-            // Missing fromEmail and toEmail
-        )
-
-        // When & Then
-        mockMvc.perform(
-            post("/api/deposit")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(invalidRequest))
-        )
-            .andExpect(status().isBadRequest)
-    }
-    */
 }

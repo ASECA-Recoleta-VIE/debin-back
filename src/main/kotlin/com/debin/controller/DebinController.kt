@@ -1,9 +1,10 @@
 package com.debin.controller
 
 import com.debin.dto.ApiResponse
-import com.debin.dto.EmailTransactionRequest
-import com.debin.dto.ReceiveMoneyRequest
+import com.debin.dto.FundAvailabilityRequest
+import com.debin.dto.FundAvailabilityResponse
 import com.debin.dto.TransferResponse
+import com.debin.dto.WithdrawRequest
 import com.debin.service.DebinService
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
@@ -20,32 +21,6 @@ class DebinController(
 
     private val logger = LoggerFactory.getLogger(DebinController::class.java)
 
-    @PostMapping("/receive")
-    fun receiveMoney(@Valid @RequestBody request: ReceiveMoneyRequest): ResponseEntity<ApiResponse<TransferResponse>> {
-        logger.info("Received money reception request for account: ${request.accountIdentifier}")
-
-        val response = debinService.receiveMoney(request)
-
-        return if (response.success) {
-            ResponseEntity.ok(response)
-        } else {
-            ResponseEntity.badRequest().body(response)
-        }
-    }
-
-    @PostMapping("/request")
-    fun requestMoney(@Valid @RequestBody request: EmailTransactionRequest): ResponseEntity<ApiResponse<Any>> {
-        logger.info("Received money request for account: ${request.email}")
-
-        val response = debinService.requestMoney(request)
-
-        return if (response.success) {
-            ResponseEntity.ok(response)
-        } else {
-            ResponseEntity.badRequest().body(response)
-        }
-    }
-
     @GetMapping("/health")
     fun health(): ResponseEntity<Map<String, String>> {
         return ResponseEntity.ok(mapOf(
@@ -53,5 +28,27 @@ class DebinController(
             "service" to "Debin API",
             "timestamp" to java.time.LocalDateTime.now().toString()
         ))
+    }
+
+    @PostMapping("/check-funds")
+    fun checkFundAvailability(@Valid @RequestBody request: FundAvailabilityRequest): ResponseEntity<ApiResponse<FundAvailabilityResponse>> {
+        logger.info("Received fund availability check request for amount: ${request.amount}")
+
+        val response = debinService.checkFundAvailability(request)
+
+        return ResponseEntity.ok(response)
+    }
+
+    @PostMapping("/withdraw-from-main")
+    fun withdrawFromMainApi(@Valid @RequestBody request: WithdrawRequest): ResponseEntity<ApiResponse<TransferResponse>> {
+        logger.info("Received withdraw from main API request for user: ${request.email}, amount: ${request.amount}")
+
+        val response = debinService.withdrawFromMainApi(request)
+
+        return if (response.success) {
+            ResponseEntity.ok(response)
+        } else {
+            ResponseEntity.badRequest().body(response)
+        }
     }
 }

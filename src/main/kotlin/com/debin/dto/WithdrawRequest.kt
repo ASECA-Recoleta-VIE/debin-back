@@ -1,21 +1,22 @@
 package com.debin.dto
 
 import jakarta.validation.constraints.DecimalMin
+import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import java.math.BigDecimal
 
-data class RequestMoneyRequest(
-    @field:NotBlank(message = "Account identifier is required")
-    val accountIdentifier: String,
+data class WithdrawRequest(
+    @field:NotBlank(message = "Email is required")
+    @field:Email(message = "Invalid email format")
+    val email: String,
     
     @field:NotNull(message = "Amount is required")
     @field:DecimalMin(value = "0.01", message = "Amount must be greater than 0")
     val amount: BigDecimal,
     
-    @field:NotBlank(message = "Description is required")
-    val description: String,
+    val description: String? = null,
     
-    val requesterName: String? = null,
-    val requesterAccount: String? = null
+    @field:NotBlank(message = "Password is required")
+    val password: String
 )
