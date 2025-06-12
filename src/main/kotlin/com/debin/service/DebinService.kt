@@ -1,6 +1,7 @@
 package com.debin.service
 
 import com.debin.dto.*
+import jakarta.websocket.Endpoint
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
@@ -10,6 +11,7 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Service
 import org.springframework.web.client.RestTemplate
+import java.math.BigDecimal
 import java.util.*
 import java.util.Base64
 
@@ -18,11 +20,13 @@ class DebinService(
     @Autowired private val restTemplate: RestTemplate,
     @Autowired private val fakeApiAccountService: FakeApiAccountService,
     @Value("\${main-api.base-url}") private val mainApiBaseUrl: String,
-    @Value("\${main-api.endpoints.withdraw}") private val withdrawEndpoint: String,
     @Value("\${main-api.auth.endpoint}") private val authEndpoint: String
 ) {
 
     private val logger = LoggerFactory.getLogger(DebinService::class.java)
+
+    @Value("\${main-api.endpoints.deposit}")
+    private lateinit var depositEndpoint: String
 
     private fun generateTransactionId(): String {
         return "DEB-${System.currentTimeMillis()}-${Random().nextInt(1000, 9999)}"
@@ -133,9 +137,43 @@ class DebinService(
     fun checkFundAvailability(request: FundAvailabilityRequest): ApiResponse<FundAvailabilityResponse> {
         logger.info("Checking fund availability for amount: ${request.amount}")
 
-        val accountId = request.accountId ?: fakeApiAccountService.getOrCreateAccount().id
-        val available = true
+        // Check if accountId is provided
+        if (request.accountId == null) {
+            return ApiResponse(
+                success = false,
+                message = "Account ID is required",
+                data = null,
+                transactionId = generateTransactionId()
+            )
+        }
+
+        val accountId = request.accountId
+
+        // Check if the account exists
+        val accountExists = fakeApiAccountService.accountExists(accountId)
+
+        // If the account doesn't exist, return false
+        if (!accountExists) {
+            val response = FundAvailabilityResponse(
+                available = false,
+                amount = request.amount,
+                accountId = accountId,
+                currentBalance = BigDecimal.ZERO
+            )
+
+            return ApiResponse(
+                success = true, // The API call is successful even if the account doesn't exist
+                message = "Account not found",
+                data = response,
+                transactionId = generateTransactionId()
+            )
+        }
+
         val currentBalance = fakeApiAccountService.getBalance(accountId)
+
+        // Check if the account has sufficient balance for the requested amount
+        // We'll consider funds available if the balance is at least the requested amount
+        val available = currentBalance >= request.amount
 
         val response = FundAvailabilityResponse(
             available = available,
@@ -144,16 +182,38 @@ class DebinService(
             currentBalance = currentBalance
         )
 
+        val message = if (available) "Funds are available" else "Insufficient funds"
+
         return ApiResponse(
-            success = true,
-            message = "Funds are available",
+            success = true, // The API call is successful even if funds are not available
+            message = message,
             data = response,
             transactionId = generateTransactionId()
         )
     }
 
-    fun withdrawFromMainApi(request: WithdrawRequest): ApiResponse<TransferResponse> {
-        logger.info("Withdrawing funds from main API for user: ${request.email}, amount: ${request.amount}")
+    fun depositToMainApi(request: DepositRequest): ApiResponse<TransferResponse> {
+        logger.info("Depositing funds to main API for user: ${request.email}, amount: ${request.amount}")
+
+        // Use the account ID from the request
+        val accountId = request.accountId
+        val fundAvailabilityRequest = FundAvailabilityRequest(
+            amount = request.amount,
+            accountId = accountId,
+            description = "Check funds for deposit to main API"
+        )
+
+        val fundAvailabilityResponse = checkFundAvailability(fundAvailabilityRequest)
+
+        if (fundAvailabilityResponse.message == "Insufficient funds" || 
+            fundAvailabilityResponse.message == "Account not found") {
+            logger.error("Insufficient funds or account not found: ${fundAvailabilityResponse.message}")
+            return ApiResponse(
+                success = false,
+                message = fundAvailabilityResponse.message,
+                data = null
+            )
+        }
 
         val authRequest = AuthRequest(
             email = request.email,
@@ -172,13 +232,12 @@ class DebinService(
         }
 
         return try {
-            val url = "$mainApiBaseUrl$withdrawEndpoint"
+            val url = "$mainApiBaseUrl$depositEndpoint"
 
-            val withdrawRequest = mapOf(
-                "email" to request.email,
-                "amount" to request.amount,
-                "description" to (request.description ?: "Withdrawal from Debin"),
-                "password" to request.password
+            val depositRequest = EmailTransactionRequest(
+                email = request.email,
+                amount = request.amount,
+                description = request.description ?: "Deposit from Debin"
             )
 
             val headers = HttpHeaders().apply {
@@ -194,9 +253,9 @@ class DebinService(
                 set("Cookie", "token=${authResponse.data.token}")
             }
 
-            val httpEntity = HttpEntity(withdrawRequest, headers)
+            val httpEntity = HttpEntity(depositRequest, headers)
 
-            logger.info("Calling main API withdraw endpoint at: $url")
+            logger.info("Calling main API deposit endpoint at: $url")
 
             val response = restTemplate.exchange(
                 url,
@@ -205,27 +264,13 @@ class DebinService(
                 Map::class.java
             )
 
-            logger.info("Main API withdraw response status: ${response.statusCode}")
+            logger.info("Main API deposit response status: ${response.statusCode}")
 
             if (response.statusCode.is2xxSuccessful && response.body != null) {
-                val accountId = fakeApiAccountService.getOrCreateAccount().id
-                val description = request.description ?: "Withdrawal from main API"
+                // Process the deposit transaction
+                val description = request.description ?: "Deposit to main API"
 
-                val depositSuccess = fakeApiAccountService.deposit(
-                    amount = request.amount,
-                    description = description,
-                    accountId = accountId
-                )
-
-                if (!depositSuccess) {
-                    logger.error("Failed to deposit funds to fake API account: $accountId")
-                    return ApiResponse(
-                        success = false,
-                        message = "Failed to deposit funds to fake API",
-                        data = null
-                    )
-                }
-
+                // Generate transaction ID and create response
                 val transactionId = generateTransactionId()
                 val transferResponse = TransferResponse(
                     transactionId = transactionId,
@@ -234,30 +279,30 @@ class DebinService(
                     accountIdentifier = accountId
                 )
 
-                logger.info("Successfully withdrew funds from main API and deposited to fake API. Transaction ID: $transactionId")
+                logger.info("Successfully deposited funds to main API. Transaction ID: $transactionId")
 
                 ApiResponse(
                     success = true,
-                    message = "Funds withdrawn from main API and deposited to fake API successfully",
+                    message = "Funds deposited to main API successfully",
                     data = transferResponse,
                     transactionId = transactionId
                 )
             } else {
-                logger.error("Withdrawal from main API failed. Status: ${response.statusCode}")
+                logger.error("Deposit to main API failed. Status: ${response.statusCode}")
 
                 ApiResponse(
                     success = false,
-                    message = "Withdrawal from main API failed. Status: ${response.statusCode}",
+                    message = "Deposit to main API failed. Status: ${response.statusCode}",
                     data = null
                 )
             }
 
         } catch (e: Exception) {
-            logger.error("Error withdrawing from main API", e)
+            logger.error("Error depositing to main API", e)
 
             ApiResponse(
                 success = false,
-                message = "Failed to withdraw from main API: ${e.message}",
+                message = "Failed to deposit to main API: ${e.message}",
                 data = null
             )
         }

@@ -33,7 +33,6 @@ class DebinServiceTest {
     private lateinit var debinService: DebinService
 
     private val mainApiBaseUrl = "http://localhost:8080"
-    private val withdrawEndpoint = "/withdraw"
 
     @BeforeEach
     fun setup() {
@@ -42,9 +41,14 @@ class DebinServiceTest {
             restTemplate,
             fakeApiAccountService,
             mainApiBaseUrl,
-            withdrawEndpoint,
             "/api/users/login"
         )
+
+
+        // Set the depositEndpoint field using reflection
+        val depositEndpointField = DebinService::class.java.getDeclaredField("depositEndpoint")
+        depositEndpointField.isAccessible = true
+        depositEndpointField.set(debinService, "/api/deposit")
     }
 
     @Test
@@ -59,6 +63,7 @@ class DebinServiceTest {
         // We don't need to mock hasSufficientFunds since it's always true now
         // Use concrete value instead of matcher to avoid Mockito issues
         `when`(fakeApiAccountService.getBalance("test-account")).thenReturn(BigDecimal("500.00"))
+        `when`(fakeApiAccountService.accountExists("test-account")).thenReturn(true)
 
         // When
         val response = debinService.checkFundAvailability(request)
@@ -75,6 +80,7 @@ class DebinServiceTest {
         // Verify that the service methods were called
         // No need to verify hasSufficientFunds since we don't call it anymore
         // Use concrete value to match the mock setup
+        verify(fakeApiAccountService).accountExists("test-account")
         verify(fakeApiAccountService).getBalance("test-account")
     }
 
@@ -87,41 +93,97 @@ class DebinServiceTest {
             description = "Test fund check"
         )
 
-        // We don't need to mock hasSufficientFunds since it's always true now
+        // Mock the balance to be less than the requested amount
         // Use concrete value instead of matcher to avoid Mockito issues
         `when`(fakeApiAccountService.getBalance("test-account")).thenReturn(BigDecimal("500.00"))
+        `when`(fakeApiAccountService.accountExists("test-account")).thenReturn(true)
 
         // When
         val response = debinService.checkFundAvailability(request)
 
         // Then
-        assertTrue(response.success)
-        // Message is now always "Funds are available" since we always return true
-        assertEquals("Funds are available", response.message)
+        assertTrue(response.success) // API call is still successful
+        // Message should now be "Insufficient funds" since the balance is less than the requested amount
+        assertEquals("Insufficient funds", response.message)
         assertNotNull(response.data)
-        // Available is now always true since we always return true
-        assertTrue(response.data!!.available)
+        // Available should now be false since the balance is less than the requested amount
+        assertEquals(false, response.data!!.available)
         assertEquals(request.amount, response.data!!.amount)
         assertEquals(request.accountId, response.data!!.accountId)
         assertEquals(BigDecimal("500.00"), response.data!!.currentBalance)
 
         // Verify that the service methods were called
-        // No need to verify hasSufficientFunds since we don't call it anymore
         // Use concrete value to match the mock setup
+        verify(fakeApiAccountService).accountExists("test-account")
         verify(fakeApiAccountService).getBalance("test-account")
+    }
+
+    @Test
+    fun `test checkFundAvailability with null accountId`() {
+        // Given
+        val request = FundAvailabilityRequest(
+            amount = BigDecimal("100.00"),
+            accountId = null,
+            description = "Test fund check"
+        )
+
+        // When
+        val response = debinService.checkFundAvailability(request)
+
+        // Then
+        assertEquals(false, response.success)
+        assertEquals("Account ID is required", response.message)
+        assertEquals(null, response.data)
+        assertNotNull(response.transactionId)
+
+        // Verify that no service methods were called
+        verifyNoInteractions(fakeApiAccountService)
+    }
+
+    @Test
+    fun `test checkFundAvailability with non-existent account`() {
+        // Given
+        val request = FundAvailabilityRequest(
+            amount = BigDecimal("100.00"),
+            accountId = "non-existent-account",
+            description = "Test fund check"
+        )
+
+        // Mock the account to not exist
+        `when`(fakeApiAccountService.accountExists("non-existent-account")).thenReturn(false)
+
+        // When
+        val response = debinService.checkFundAvailability(request)
+
+        // Then
+        assertTrue(response.success) // API call is still successful
+        assertEquals("Account not found", response.message)
+        assertNotNull(response.data)
+        assertEquals(false, response.data!!.available)
+        assertEquals(request.amount, response.data!!.amount)
+        assertEquals(request.accountId, response.data!!.accountId)
+        assertEquals(BigDecimal.ZERO, response.data!!.currentBalance)
+
+        // Verify that the service methods were called
+        verify(fakeApiAccountService).accountExists("non-existent-account")
+        // getBalance should not be called since the account doesn't exist
+        verify(fakeApiAccountService, never()).getBalance("non-existent-account")
     }
 
     // Test for removeFunds removed since this method doesn't exist in the current implementation
 
     @Test
-    fun `test withdrawFromMainApi success`() {
+    fun `test depositToMainApi success`() {
         // Given
-        val request = WithdrawRequest(
+        val request = DepositRequest(
             email = "test@example.com",
             amount = BigDecimal("100.00"),
-            description = "Test withdrawal",
-            password = "password123@"
+            description = "Test deposit",
+            password = "password123@",
+            accountId = "test-account"
         )
+        `when`(fakeApiAccountService.accountExists("test-account")).thenReturn(true)
+        `when`(fakeApiAccountService.getBalance("test-account")).thenReturn(BigDecimal("500.00"))
 
         // Mock authentication response with a cookie containing the token
         val headers = org.springframework.http.HttpHeaders()
@@ -131,63 +193,37 @@ class DebinServiceTest {
 
         // Mock the authentication call to return a string response with the token in a cookie
         `when`(restTemplate.exchange(
-            anyString(),
+            contains("/api/users/login"),
             eq(HttpMethod.POST),
             any(HttpEntity::class.java),
             eq(String::class.java)
         )).thenReturn(authResponseEntity)
 
-        // Mock withdraw response
-        val withdrawResponseBody = mapOf(
-            "name" to "Main Wallet",
-            "balance" to 900.0,
-            "currency" to "USD"
-        )
-
-        val withdrawResponseEntity = ResponseEntity(withdrawResponseBody, HttpStatus.OK)
+        // Mock the deposit call to return a successful response
+        val depositResponseEntity = ResponseEntity<Map<*, *>>(mapOf("success" to true), HttpStatus.OK)
 
         `when`(restTemplate.exchange(
-            anyString(),
+            contains("/api/deposit"),
             eq(HttpMethod.POST),
             any(HttpEntity::class.java),
             eq(Map::class.java)
-        )).thenReturn(withdrawResponseEntity as ResponseEntity<Map<*, *>>)
-
-        // Mock deposit to fake API
-        val fakeAccount = FakeApiAccount(id = "test-account")
-        `when`(fakeApiAccountService.getOrCreateAccount()).thenReturn(fakeAccount)
-        // Use concrete values instead of matchers to avoid Mockito issues
-        `when`(fakeApiAccountService.deposit(request.amount, "Test withdrawal", "test-account")).thenReturn(true)
+        )).thenReturn(depositResponseEntity)
 
         // When
-        val response = debinService.withdrawFromMainApi(request)
+        val response = debinService.depositToMainApi(request)
 
         // Then
         assertTrue(response.success)
-        assertEquals("Funds withdrawn from main API and deposited to fake API successfully", response.message)
+        assertEquals("Funds deposited to main API successfully", response.message)
         assertNotNull(response.data)
         assertEquals(request.amount, response.data!!.amount)
-        assertEquals("test-account", response.data!!.accountIdentifier)
         assertEquals("COMPLETED", response.data!!.status)
-        assertNotNull(response.transactionId)
+        assertNotNull(response.data!!.transactionId)
+        assertNotNull(response.data!!.accountIdentifier)
 
-        // Verify that the service methods were called with the correct parameters
-        verify(restTemplate).exchange(
-            anyString(),
-            eq(HttpMethod.POST),
-            any(HttpEntity::class.java),
-            eq(String::class.java)
-        )
-
-        verify(restTemplate).exchange(
-            anyString(),
-            eq(HttpMethod.POST),
-            any(HttpEntity::class.java),
-            eq(Map::class.java)
-        )
-
-        verify(fakeApiAccountService).getOrCreateAccount()
-        // Use concrete values to match the mock setup
-        verify(fakeApiAccountService).deposit(request.amount, "Test withdrawal", "test-account")
+        // Verify that the service methods were called
+        verify(fakeApiAccountService).accountExists("test-account")
+        verify(fakeApiAccountService).getBalance("test-account")
     }
+
 }

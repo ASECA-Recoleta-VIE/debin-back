@@ -1,10 +1,10 @@
 package com.debin.controller
 
 import com.debin.dto.ApiResponse
+import com.debin.dto.DepositRequest
 import com.debin.dto.FundAvailabilityRequest
 import com.debin.dto.FundAvailabilityResponse
 import com.debin.dto.TransferResponse
-import com.debin.dto.WithdrawRequest
 import com.debin.service.DebinService
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
@@ -36,19 +36,28 @@ class DebinController(
 
         val response = debinService.checkFundAvailability(request)
 
-        return ResponseEntity.ok(response)
+        return when (response.message) {
+            "Account not found" -> ResponseEntity.notFound().build()
+            "Insufficient funds" -> ResponseEntity.status(403).body(response)
+            "Account ID is required" -> ResponseEntity.status(400).body(response)
+            else -> ResponseEntity.ok(response)
+        }
     }
 
-    @PostMapping("/withdraw-from-main")
-    fun withdrawFromMainApi(@Valid @RequestBody request: WithdrawRequest): ResponseEntity<ApiResponse<TransferResponse>> {
-        logger.info("Received withdraw from main API request for user: ${request.email}, amount: ${request.amount}")
+    @PostMapping("/deposit-to-main")
+    fun depositToMainApi(@Valid @RequestBody request: DepositRequest): ResponseEntity<ApiResponse<TransferResponse>> {
+        logger.info("Received deposit to main API request for user: ${request.email}, amount: ${request.amount}")
 
-        val response = debinService.withdrawFromMainApi(request)
+        val response = debinService.depositToMainApi(request)
 
-        return if (response.success) {
-            ResponseEntity.ok(response)
-        } else {
-            ResponseEntity.badRequest().body(response)
+        return when (response.message) {
+            "Insufficient funds" -> ResponseEntity.status(403).body(response)
+            "Account not found" -> ResponseEntity.status(404).body(response)
+            else -> if (response.success) {
+                ResponseEntity.ok(response)
+            } else {
+                ResponseEntity.badRequest().body(response)
+            }
         }
     }
 }

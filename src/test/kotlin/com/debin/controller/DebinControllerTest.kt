@@ -84,16 +84,123 @@ class DebinControllerTest {
             .andExpect(jsonPath("$.data.currentBalance").value(500.00))
     }
 
+    @Test
+    fun `test checkFundAvailability insufficient funds`() {
+        // Given
+        val request = FundAvailabilityRequest(
+            amount = BigDecimal("1000.00"),
+            accountId = "test-account",
+            description = "Test fund check"
+        )
+
+        val fundAvailabilityResponse = FundAvailabilityResponse(
+            available = false,
+            amount = request.amount,
+            accountId = request.accountId!!,
+            currentBalance = BigDecimal("500.00")
+        )
+
+        val apiResponse = ApiResponse(
+            success = true,
+            message = "Insufficient funds",
+            data = fundAvailabilityResponse,
+            timestamp = LocalDateTime.now(),
+            transactionId = "DEB-123456"
+        )
+
+        `when`(debinService.checkFundAvailability(request)).thenReturn(apiResponse)
+
+        // When & Then
+        mockMvc.perform(
+            post("/api/check-funds")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.message").value("Insufficient funds"))
+            .andExpect(jsonPath("$.data.available").value(false))
+            .andExpect(jsonPath("$.data.amount").value(1000.00))
+            .andExpect(jsonPath("$.data.accountId").value("test-account"))
+            .andExpect(jsonPath("$.data.currentBalance").value(500.00))
+    }
+
+    @Test
+    fun `test checkFundAvailability account not found`() {
+        // Given
+        val request = FundAvailabilityRequest(
+            amount = BigDecimal("100.00"),
+            accountId = "non-existent-account",
+            description = "Test fund check"
+        )
+
+        val fundAvailabilityResponse = FundAvailabilityResponse(
+            available = false,
+            amount = request.amount,
+            accountId = request.accountId!!,
+            currentBalance = BigDecimal.ZERO
+        )
+
+        val apiResponse = ApiResponse(
+            success = true,
+            message = "Account not found",
+            data = fundAvailabilityResponse,
+            timestamp = LocalDateTime.now(),
+            transactionId = "DEB-123456"
+        )
+
+        `when`(debinService.checkFundAvailability(request)).thenReturn(apiResponse)
+
+        // When & Then
+        mockMvc.perform(
+            post("/api/check-funds")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isNotFound)
+    }
+
     // Test for removeFunds removed since this method doesn't exist in the current implementation
 
     @Test
-    fun `test withdrawFromMainApi success`() {
+    fun `test checkFundAvailability missing accountId`() {
         // Given
-        val request = WithdrawRequest(
+        val request = FundAvailabilityRequest(
+            amount = BigDecimal("100.00"),
+            accountId = null,
+            description = "Test fund check"
+        )
+
+        val apiResponse = ApiResponse<FundAvailabilityResponse>(
+            success = false,
+            message = "Account ID is required",
+            data = null,
+            timestamp = LocalDateTime.now(),
+            transactionId = "DEB-123456"
+        )
+
+        `when`(debinService.checkFundAvailability(request)).thenReturn(apiResponse)
+
+        // When & Then
+        mockMvc.perform(
+            post("/api/check-funds")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.message").value("Account ID is required"))
+    }
+
+    @Test
+    fun `test depositToMainApi success`() {
+        // Given
+        val request = DepositRequest(
             email = "test@example.com",
             amount = BigDecimal("100.00"),
-            description = "Test withdrawal",
-            password = "password123"
+            description = "Test deposit",
+            password = "password123",
+            accountId = "test-account"
         )
 
         val transferResponse = TransferResponse(
@@ -105,26 +212,90 @@ class DebinControllerTest {
 
         val apiResponse = ApiResponse(
             success = true,
-            message = "Funds withdrawn from main API and deposited to fake API successfully",
+            message = "Funds deposited to main API successfully",
             data = transferResponse,
             timestamp = LocalDateTime.now(),
             transactionId = "DEB-123456"
         )
 
-        `when`(debinService.withdrawFromMainApi(request)).thenReturn(apiResponse)
+        `when`(debinService.depositToMainApi(request)).thenReturn(apiResponse)
 
         // When & Then
         mockMvc.perform(
-            post("/api/withdraw-from-main")
+            post("/api/deposit-to-main")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.message").value("Funds withdrawn from main API and deposited to fake API successfully"))
+            .andExpect(jsonPath("$.message").value("Funds deposited to main API successfully"))
             .andExpect(jsonPath("$.data.transactionId").value("DEB-123456"))
             .andExpect(jsonPath("$.data.amount").value(100.00))
             .andExpect(jsonPath("$.data.status").value("COMPLETED"))
             .andExpect(jsonPath("$.data.accountIdentifier").value("test-account"))
+    }
+
+    @Test
+    fun `test depositToMainApi insufficient funds`() {
+        // Given
+        val request = DepositRequest(
+            email = "test@example.com",
+            amount = BigDecimal("1000.00"),
+            description = "Test deposit",
+            password = "password123",
+            accountId = "test-account"
+        )
+
+        val apiResponse = ApiResponse<TransferResponse>(
+            success = false,
+            message = "Insufficient funds",
+            data = null,
+            timestamp = LocalDateTime.now(),
+            transactionId = "DEB-123456"
+        )
+
+        `when`(debinService.depositToMainApi(request)).thenReturn(apiResponse)
+
+        // When & Then
+        mockMvc.perform(
+            post("/api/deposit-to-main")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.message").value("Insufficient funds"))
+    }
+
+    @Test
+    fun `test depositToMainApi account not found`() {
+        // Given
+        val request = DepositRequest(
+            email = "test@example.com",
+            amount = BigDecimal("100.00"),
+            description = "Test deposit",
+            password = "password123",
+            accountId = "test-account"
+        )
+
+        val apiResponse = ApiResponse<TransferResponse>(
+            success = false,
+            message = "Account not found",
+            data = null,
+            timestamp = LocalDateTime.now(),
+            transactionId = "DEB-123456"
+        )
+
+        `when`(debinService.depositToMainApi(request)).thenReturn(apiResponse)
+
+        // When & Then
+        mockMvc.perform(
+            post("/api/deposit-to-main")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.message").value("Account not found"))
     }
 }
