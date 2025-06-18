@@ -17,9 +17,6 @@ data class DepositRequest(
 
     val description: String? = null,
 
-    @field:NotBlank(message = "Password is required")
-    val password: String,
-
     @field:NotBlank(message = "Account ID is required")
     val accountId: String
 )

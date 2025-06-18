@@ -179,25 +179,10 @@ class DebinServiceTest {
             email = "test@example.com",
             amount = BigDecimal("100.00"),
             description = "Test deposit",
-            password = "password123@",
             accountId = "test-account"
         )
         `when`(fakeApiAccountService.accountExists("test-account")).thenReturn(true)
         `when`(fakeApiAccountService.getBalance("test-account")).thenReturn(BigDecimal("500.00"))
-
-        // Mock authentication response with a cookie containing the token
-        val headers = org.springframework.http.HttpHeaders()
-        headers.add("Set-Cookie", "token=test-token; Path=/; HttpOnly; SameSite=Strict; Max-Age=7200")
-
-        val authResponseEntity = ResponseEntity("login-success", headers, HttpStatus.OK)
-
-        // Mock the authentication call to return a string response with the token in a cookie
-        `when`(restTemplate.exchange(
-            contains("/api/users/login"),
-            eq(HttpMethod.POST),
-            any(HttpEntity::class.java),
-            eq(String::class.java)
-        )).thenReturn(authResponseEntity)
 
         // Mock the deposit call to return a successful response
         val depositResponseEntity = ResponseEntity<Map<*, *>>(mapOf("success" to true), HttpStatus.OK)

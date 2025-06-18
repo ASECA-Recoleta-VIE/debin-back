@@ -199,7 +199,6 @@ class DebinControllerTest {
             email = "test@example.com",
             amount = BigDecimal("100.00"),
             description = "Test deposit",
-            password = "password123",
             accountId = "test-account"
         )
 
@@ -242,7 +241,6 @@ class DebinControllerTest {
             email = "test@example.com",
             amount = BigDecimal("1000.00"),
             description = "Test deposit",
-            password = "password123",
             accountId = "test-account"
         )
 
@@ -274,7 +272,6 @@ class DebinControllerTest {
             email = "test@example.com",
             amount = BigDecimal("100.00"),
             description = "Test deposit",
-            password = "password123",
             accountId = "test-account"
         )
 

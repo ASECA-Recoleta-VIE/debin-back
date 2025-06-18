@@ -215,22 +215,6 @@ class DebinService(
             )
         }
 
-        val authRequest = AuthRequest(
-            email = request.email,
-            password = request.password
-        )
-
-        val authResponse = authenticate(authRequest)
-
-        if (!authResponse.success || authResponse.data == null) {
-            logger.error("Authentication failed for user: ${request.email}")
-            return ApiResponse(
-                success = false,
-                message = "Authentication failed: ${authResponse.message}",
-                data = null
-            )
-        }
-
         return try {
             val url = "$mainApiBaseUrl$depositEndpoint"
 
@@ -242,15 +226,6 @@ class DebinService(
 
             val headers = HttpHeaders().apply {
                 contentType = MediaType.APPLICATION_JSON
-
-                if (authResponse.data.tokenType == "Basic") {
-                    val encodedAuth = Base64.getEncoder().encodeToString(authResponse.data.token.toByteArray())
-                    set("Authorization", "Basic $encodedAuth")
-                } else {
-                    set("Authorization", "${authResponse.data.tokenType} ${authResponse.data.token}")
-                }
-
-                set("Cookie", "token=${authResponse.data.token}")
             }
 
             val httpEntity = HttpEntity(depositRequest, headers)
